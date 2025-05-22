@@ -1,0 +1,186 @@
+---
+title: "TP3_Lombardo"
+author: "Christian Lombardo"
+date: "2025-05-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r carga de datos}
+library(tidyverse)
+library(readr)
+library(dplyr)
+player_stats <- read_csv("player_stats.csv")
+
+set.seed(585)
+
+sample <- player_stats %>% sample_n(2000)
+dim(player_stats)
+```
+Aplicar el Análisis de Componentes Principales (PCA) para reducir la dimensionalidad del dataset de FIFA 2024 Men, identificar patrones en los datos y visualizar cómo se agrupan los jugadores en función de sus características.
+
+# Análisis exploratorio de datos y preprocesamiento
+
+
+
+
+
+
+
+## 1- Analice la presencia de valores faltantes y datos duplicados.
+```{r punto 1}
+sum(is.na(sample))
+
+any(duplicated(sample))
+
+(colnames(sample))
+
+```
+## 2- Seleccione un subconjunto de variables relevantes para realizar el PCA. Justifique la selección.
+```{r punto 2}
+df <- sample %>% select(player,country,height,weight,age,club,stand_tackle,slide_tackle, interceptions,short_pass,ball_control,
+                        dribbling,agility,finishing,shot_power,gk_handling,gk_reflexes,long_shots)
+length(df)
+```
+Se eligieron los atributos para detectar las distintas posiciones de juego. Se tomo tres caracteristicas fundamentales de cada posicion para observar la variabilidad de los datos. Esto permitira que haya una alta variabilidad entre los datos, lo que facilitara también su visibilidad para el analisis de pca, agrupando los datos de manera mas marcada.
+
+## 3- Realice una descripción de las variables numéricas seleccionadas.
+```{r punto 3}
+summary(df)
+hist(df$age, 
+     main = "Histograma del peso",
+     xlab = "Edad",
+     ylab = "Frecuencia",
+     col = "salmon",
+     border = "black"
+)
+
+hist(df$height, 
+     main = "Histograma de la altura",
+     xlab = "Edad",
+     ylab = "Frecuencia",
+     col = "salmon",
+     border = "black"
+)
+
+ggplot(df, aes(x=height, y=gk_reflexes)) + 
+  geom_point( colour='#56B4E9', shape=19)+
+  xlab("Altura")+
+  ylab("Reflejos de arquero")+
+  theme_bw()
+
+```
+
+En el histograma de la altura Se observa una distribucion normal de los datos, con una media ubicada en 1.81m.
+
+El histograma de las edades muestra una asimetria con cola hacia la derecha, determinando que la mayoria de los jugadores son jovenes en europa, lo que se peude deber al futbol de elite en dicho continente sobre el resto del mundo que atrae y retiene el talento joven. 
+
+En el scatter plot se observa un grupo con mayores habilidades de reflejos que el resto, que son los arqueros. Y también podemos sacar la conclusion de que los arqueros son personas altas. 
+
+
+## 4- ¿Se estandarizaron las variables? Justifique.
+```{r}
+df_numeric <- df %>% select(height,weight,age,stand_tackle,slide_tackle,interceptions,short_pass,ball_control,
+                        dribbling,agility,finishing,shot_power,gk_handling,gk_reflexes,long_shots)
+df_scaled<-data.frame(scale(df_numeric))
+```
+Las variables son de distintos tipos de distintas escalas, por lo que para aplicar PCA se debe estandarizar las variables para que tengan la misma escala y la misma importancia.
+
+# PCA e interpretación.
+## 5- Realice el PCA sobre las variables seleccionadas. ¿Con cuantas componentes decide quedarse luego de la reduccion de dimensionalidad? 
+```{r punto 5}
+library(corrplot)
+matriz_correlacion <- round(cov(df_scaled) , 2);
+matriz_correlacion
+
+
+pca <- prcomp(df_numeric, scale = TRUE)
+
+round(pca$rotation,2)
+
+contrib <- as.matrix(round(pca$rotation,2))
+corrplot(contrib,is.corr=FALSE)
+pca$sdev^2
+prop_varianza <- pca$sdev^2 / sum(pca$sdev^2)
+prop_varianza
+
+
+ggplot(data = data.frame(prop_varianza, pc = 1:15),
+       aes(x = pc, y = prop_varianza)) +
+  geom_col(width = 0.4) +
+  scale_y_continuous(limits = c(0,0.6)) +
+  theme_bw() +
+  labs(x = "Componente principal",
+       y = "Prop. de varianza explicada")
+
+prop_varianza_acum <- cumsum(prop_varianza)
+
+ggplot(data = data.frame(prop_varianza_acum, pc = 1:15),
+       aes(x = pc, y = prop_varianza_acum, group = 1)) +
+  geom_point() +
+  geom_line() +
+  theme_bw() +
+  labs(x = "Componente principal",
+       y = "Prop. varianza explicada acumulada")
+```
+
+Para determinar los componentes con los que me quedo, me baso en el criterio de Porcentaje de Variabilidad, asumiendo un porcentaje minimo de 85%, por lo que nos quedamos con los primeros 4 componentes.
+
+## 6- Interprete las cargas factoriales de las primeras dos componentes principales. ¿Qué atributos de los jugadores están más representados en cada componente? Mostrar el biplot del PCA realizado.
+```{r punto 6}
+library(factoextra)
+
+fviz_eig(pca, ncp =15, addlabels = TRUE, main="")
+
+length(pca$x[,1])
+
+
+
+library(ggfortify)
+
+autoplot(pca, 
+         data = df_numeric, 
+         loadings = TRUE, 
+         loadings.colour = 'black',
+         loadings.label = TRUE, 
+         loadings.label.size = 5)
+```
+
+Se puede observar en el biplot el porcentaje de informacion captada en cada componente principal entre el plano PC1 y PC2. Se aprecia que las caracteristicas de arqueros (gk_handling y gk_reflexes) son mejor representadas en la componente PC1 con una contribucion negativa. A su vez, gran porcentaje de la informacion de las caracteristicas de mediocampista parecen ser mejor retenidas también por la PC1 (short_pass, dribbling, agility). Por otro lado, la informacion de las caracteristicas de defensores (interception, slide_stackle, stand_tackle )son mejor guardadas en la direccion del PC2.
+
+Finalmente, se puede ver que en esta reduccion de la dimnesionalidad hay una perdida de informacion con respecto a la edad de los jugadores, ya que su valor de score es muy baja en ambas componentes. 
+
+El grafico también muestra la fuerte correlacion de distintas variables entre si, como gk_handling y gk_reflex, o entre height y weight.
+
+## 7- Identifique si hay agrupamientos naturales de jugadores en función de las características seleccionadas. Interprete y concluya.
+
+Finalmente, en la distribucion de los datos mostrada en el biplot, se pueden distinguir diversos agrupamientos siguiendo diversas direcciones de los atributos seleccionados. Podemos asi distinguir los arqueros, que estan alejados del resto de datos, ya que sus caracteristicas son exclusivamente de esa posicion. 
+Mientras que en las demas direcciones, podemos distinguir los jugadores que seguramente se especialicen en una posicion particular, pero ciertas habilidades pueden compartirse entre grupos, aunque si esten mas presentes en unos que otros. Por eso los datos estan mas agrupados.
+
+## 8- Elegir una técnica de PCA robusto y aplicarla sobre la base de datos. Compare los resultados con los obtenidos anteriormente. Concluir.
+
+```{r punto 8 i}
+pca_mve <-princomp(df_numeric, 
+                   cor=TRUE, 
+                   scores=TRUE,
+                   covmat=MASS::cov.mve(df_numeric))#se especifica MVE
+summary(pca_mve)
+```
+
+
+```{r punto 8 ii}
+library(ggpubr)
+library(factoextra)
+
+par(mfrow=c(2,1))
+p1 <-fviz_eig(pca_mve, ncp =5, addlabels = TRUE, main="MVE")
+p2<- fviz_eig(pca, ncp =5, addlabels = TRUE, main="No robusto")
+
+ggarrange(p1,p2, nrow = 1, ncol = 2)
+```
+
+Al comparar ambos métodos, puede observarse una diferencia en los resultados de ambos. Esto confirma la presencia de outlayers, los cuales degradan el rendimiento del método tradicional.
